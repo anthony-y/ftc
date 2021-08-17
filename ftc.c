@@ -2,35 +2,35 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef signed   char s8;
-typedef unsigned char u8;
-typedef signed   short s16;
-typedef unsigned short u16;
-typedef signed   int s32;
-typedef unsigned int u32;
-typedef signed   long int s64;
+typedef unsigned char     u8;
 typedef unsigned long int u64;
-typedef float f32;
-typedef double f64;
 
 #define FETCH_INSTALL_DATE 0
-#define IO_BUFFER_SIZE 10240 // 10kb
+#define IO_BUFFER_SIZE     10240 // 10kb
 
-#define ANSI_COLOR_RED     "\x1b[31m"
-#define ANSI_COLOR_GREEN   "\x1b[32m"
-#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_RED     "\x1b[1;31m"
+#define ANSI_COLOR_GREEN   "\x1b[1;32m"
+#define ANSI_COLOR_YELLOW  "\x1b[1;33m"
 #define ANSI_COLOR_BLUE    "\x1b[1;34m"
-#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_MAGENTA "\x1b[1;35m"
 #define ANSI_COLOR_CYAN    "\x1b[1;36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
+
+#define TITLE_COLOR    ANSI_COLOR_YELLOW
+#define INFO_COLOR     ANSI_COLOR_RESET
+#define USERNAME_COLOR ANSI_COLOR_MAGENTA
+#define HOSTNAME_COLOR ANSI_COLOR_RESET
 
 static char *do_command(const char *the_command);
 static char *read_file(const char *path);
 
-static void fetch_user_and_host_name();
-static void fetch_memory_info();
-static void fetch_cpu_info();
 static void fetch_installation_date();
+static void fetch_uptime();
+static void fetch_memory_info();
+static void fetch_user_and_host_name();
+static void fetch_pacman_package_count();
+static void fetch_kernel_version();
+static void fetch_cpu_info();
 
 //
 // Util functions for parsing.
@@ -57,7 +57,7 @@ static void fetch_installation_date()
     cursor--;
 
     u64 length = (cursor - start);
-    printf(ANSI_COLOR_BLUE "System installed" ANSI_COLOR_RESET ": ");
+    printf(TITLE_COLOR "System installed" INFO_COLOR ": ");
     printf("%.*s\n", length, start);
 
     free(first_pacman_cmd);
@@ -72,6 +72,8 @@ static void fetch_uptime()
 
     int colon_index = 0;
     int index       = 0;
+
+    if (!uptime) return;
 
     while (*cursor++ != 'p');
     while (*cursor == ' ' || *cursor == '\t') cursor++;
@@ -94,7 +96,7 @@ static void fetch_uptime()
     if (minutes_only == 1)
     {
         u64 length = (cursor - start) - 1;
-        printf(ANSI_COLOR_BLUE "Uptime" ANSI_COLOR_RESET ": ");
+        printf(TITLE_COLOR "Uptime" INFO_COLOR ": ");
         printf("%.*s minutes\n", length, start);
         free(uptime);
         return;
@@ -112,7 +114,7 @@ static void fetch_uptime()
     minutes_string[minutes_length] = 0;
 
     u64 length = (cursor - start);
-    printf(ANSI_COLOR_BLUE "Uptime" ANSI_COLOR_RESET ": ");
+    printf(TITLE_COLOR "Uptime" INFO_COLOR ": ");
     printf("%s hours, %s minutes\n", hour_string, minutes_string);
 
     free(hour_string);
@@ -125,6 +127,7 @@ static void fetch_uptime()
 static void fetch_memory_info()
 {
     char *meminfo = read_file("/proc/meminfo");
+    if (!meminfo) return;
 
     u64 total_memory = 0, free_memory = 0;
 
@@ -189,15 +192,16 @@ static void fetch_memory_info()
     free_memory  /= 1024;
     u64 used_memory = total_memory - free_memory;
 
-    printf(ANSI_COLOR_BLUE "Memory" ANSI_COLOR_RESET ": %ld MiB / %ld MiB\n", used_memory, total_memory);
+    printf(TITLE_COLOR "Memory" INFO_COLOR ": %ld MiB / %ld MiB\n", used_memory, total_memory);
 }
 
 static void fetch_user_and_host_name()
 {
     char *username = do_command("whoami");
     char *hostname = read_file("/proc/sys/kernel/hostname");
+    if (!username || !hostname) return;
 
-    printf(ANSI_COLOR_CYAN "%s" ANSI_COLOR_RESET "@%s", username, hostname);
+    printf(USERNAME_COLOR "%s" ANSI_COLOR_RESET "@" HOSTNAME_COLOR "%s", username, hostname);
 
     // Print vanity separator.
     int separator_length = strlen(username) + strlen(hostname) + 1;
@@ -211,7 +215,8 @@ static void fetch_user_and_host_name()
 static void fetch_pacman_package_count()
 {
     char *packages = do_command("pacman -Q | wc -l"); // TODO: improve, we have to run pacman -Q which takes a while
-    printf(ANSI_COLOR_BLUE "Packages" ANSI_COLOR_RESET ": ");
+    if (!packages) return;
+    printf(TITLE_COLOR "Packages" INFO_COLOR ": ");
     printf("%s", packages);
     printf(" (pacman)\n");
     free(packages);
@@ -229,10 +234,42 @@ static void fetch_kernel_version()
     while (*cursor != ' ' && *cursor++ != '\n');
     char *end_of_version = cursor;
 
-    printf(ANSI_COLOR_BLUE "Kernel" ANSI_COLOR_RESET ": ");
+    printf(TITLE_COLOR "Kernel" INFO_COLOR ": ");
     printf("linux %.*s\n", (int)(end_of_version - start_of_version), start_of_version);
 
     free(version);
+}
+
+static void fetch_cpu_info()
+{
+    return; // TODO
+
+    char *cpu_temp = do_command("/sys/class/hwmon/hwmon1/temp2_input");
+    printf("debug %s\n", cpu_temp);
+    float as_float = atof(cpu_temp);
+    as_float /= 100;
+    printf("debug %f\n", as_float);
+
+    printf(TITLE_COLOR "Processor temp " INFO_COLOR ": %s°C", cpu_temp);
+    free(cpu_temp);
+}
+
+int main(int arg_count, char **args)
+{
+    printf("\n");
+
+    fetch_user_and_host_name();
+    fetch_kernel_version();
+    fetch_memory_info();
+    fetch_pacman_package_count();
+    fetch_installation_date();
+    fetch_uptime();
+
+    fetch_cpu_info();
+
+    printf("\n");
+
+    return 0;
 }
 
 static char *do_command(const char *the_command)
@@ -290,36 +327,4 @@ static char *read_file(const char *path)
     strncpy(ret, buffer, bytes_read);
     ret[bytes_read] = 0;
     return ret;
-}
-
-static void fetch_cpu_info()
-{
-    return; // TODO
-
-    char *cpu_temp = do_command("/sys/class/hwmon/hwmon1/temp2_input");
-    printf("debug %s\n", cpu_temp);
-    float as_float = atof(cpu_temp);
-    as_float /= 100;
-    printf("debug %f\n", as_float);
-
-    printf(ANSI_COLOR_BLUE "Processor temp " ANSI_COLOR_RESET ": %s°C", cpu_temp);
-    free(cpu_temp);
-}
-
-int main(int arg_count, char **args)
-{
-    printf("\n");
-
-    fetch_user_and_host_name();
-    fetch_kernel_version();
-    fetch_memory_info();
-    fetch_pacman_package_count();
-    fetch_installation_date();
-    fetch_uptime();
-
-    fetch_cpu_info();
-
-    printf("\n");
-
-    return 0;
 }
