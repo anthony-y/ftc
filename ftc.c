@@ -5,32 +5,59 @@
 typedef unsigned char     u8;
 typedef unsigned long int u64;
 
-#define FETCH_INSTALL_DATE 0
-#define IO_BUFFER_SIZE     10240 // 10kb
+#define IO_BUFFER_SIZE 10240 // 10kb
 
-#define ANSI_COLOR_RED     "\x1b[1;31m"
+// For any of these, you can change the "1;" to a "0;" to make it non-bold (these are all bold by default, except ANSI_COLOR_DEFAULT).
+#define ANSI_COLOR_RED     "\x1b[1;31m" 
 #define ANSI_COLOR_GREEN   "\x1b[1;32m"
 #define ANSI_COLOR_YELLOW  "\x1b[1;33m"
 #define ANSI_COLOR_BLUE    "\x1b[1;34m"
 #define ANSI_COLOR_MAGENTA "\x1b[1;35m"
 #define ANSI_COLOR_CYAN    "\x1b[1;36m"
-#define ANSI_COLOR_RESET   "\x1b[0m"
+
+#define ANSI_COLOR_DEFAULT "\x1b[0m"
 
 #define TITLE_COLOR    ANSI_COLOR_YELLOW
-#define INFO_COLOR     ANSI_COLOR_RESET
+#define INFO_COLOR     ANSI_COLOR_DEFAULT
 #define USERNAME_COLOR ANSI_COLOR_MAGENTA
-#define HOSTNAME_COLOR ANSI_COLOR_RESET
+#define HOSTNAME_COLOR ANSI_COLOR_DEFAULT
 
+// These are the core functions of the program.
+// They do all the heavy-lifting of querying the system for information.
 static char *do_command(const char *the_command);
 static char *read_file(const char *path);
 
+// These call do_command and read_file to get the right info.
+// They are "pure", so not state, and ultimately they just invoke printf.
 static void fetch_installation_date();
 static void fetch_uptime();
 static void fetch_memory_info();
 static void fetch_user_and_host_name();
 static void fetch_pacman_package_count();
 static void fetch_kernel_version();
-static void fetch_cpu_info();
+static void fetch_cpu_temperature();
+
+int main(int arg_count, char **args)
+{
+    printf("\n");
+
+    /*
+     * This is the order they will appear in.
+     * It can be any order you want.
+     * You can also comment out any you don't want.
+    */
+    fetch_user_and_host_name();
+    fetch_kernel_version();
+    fetch_memory_info();
+    fetch_pacman_package_count();
+    fetch_uptime();
+    fetch_cpu_temperature();
+    fetch_installation_date();
+
+    printf("\n");
+
+    return 0;
+}
 
 //
 // Util functions for parsing.
@@ -47,9 +74,8 @@ static inline int is_numerical(char c)
 
 static void fetch_installation_date()
 {
-#if FETCH_INSTALL_DATE
     char *first_pacman_cmd = do_command("head -n1 /var/log/pacman.log");
-    if (!first_pacman_cmd || *first_pacman_cmd != '[') return;
+    if (!first_pacman_cmd || *first_pacman_cmd != '[') return; // we'll exit here if the system doesn't use pacman.
 
     char *start = first_pacman_cmd+1;
     char *cursor = start;
@@ -61,7 +87,6 @@ static void fetch_installation_date()
     printf("%.*s\n", length, start);
 
     free(first_pacman_cmd);
-#endif
 }
 
 static void fetch_uptime()
@@ -201,7 +226,7 @@ static void fetch_user_and_host_name()
     char *hostname = read_file("/proc/sys/kernel/hostname");
     if (!username || !hostname) return;
 
-    printf(USERNAME_COLOR "%s" ANSI_COLOR_RESET "@" HOSTNAME_COLOR "%s", username, hostname);
+    printf(USERNAME_COLOR "%s" ANSI_COLOR_DEFAULT "@" HOSTNAME_COLOR "%s", username, hostname);
 
     // Print vanity separator.
     int separator_length = strlen(username) + strlen(hostname) + 1;
@@ -214,11 +239,14 @@ static void fetch_user_and_host_name()
 
 static void fetch_pacman_package_count()
 {
-    char *packages = do_command("pacman -Q | wc -l"); // TODO: improve, we have to run pacman -Q which takes a while
-    if (!packages) return;
+    // TODO: improve, we have to run pacman -Q which takes a while.
+    char *packages = do_command("pacman -Q | wc -l");
+    if (!packages) return; // we'll exit here if the system doesn't use pacman.
+
     printf(TITLE_COLOR "Packages" INFO_COLOR ": ");
     printf("%s", packages);
     printf(" (pacman)\n");
+
     free(packages);
 }
 
@@ -240,36 +268,21 @@ static void fetch_kernel_version()
     free(version);
 }
 
-static void fetch_cpu_info()
+static void fetch_cpu_temperature()
 {
-    return; // TODO
+    char *cpu_temp = read_file("/sys/class/hwmon/hwmon1/temp2_input");
+    if (!cpu_temp)
+    {
+        printf(TITLE_COLOR "Processor temp" INFO_COLOR ": unavailable\n");
+        return;
+    }
 
-    char *cpu_temp = do_command("/sys/class/hwmon/hwmon1/temp2_input");
-    printf("debug %s\n", cpu_temp);
     float as_float = atof(cpu_temp);
-    as_float /= 100;
-    printf("debug %f\n", as_float);
+    as_float /= 1000;
+    int as_int = (int)as_float;
 
-    printf(TITLE_COLOR "Processor temp " INFO_COLOR ": %s°C", cpu_temp);
+    printf(TITLE_COLOR "Processor temp" INFO_COLOR ": %d°C\n", as_int);
     free(cpu_temp);
-}
-
-int main(int arg_count, char **args)
-{
-    printf("\n");
-
-    fetch_user_and_host_name();
-    fetch_kernel_version();
-    fetch_memory_info();
-    fetch_pacman_package_count();
-    fetch_installation_date();
-    fetch_uptime();
-
-    fetch_cpu_info();
-
-    printf("\n");
-
-    return 0;
 }
 
 static char *do_command(const char *the_command)
