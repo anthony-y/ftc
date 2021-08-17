@@ -13,10 +13,8 @@ typedef unsigned long int u64;
 typedef float f32;
 typedef double f64;
 
+#define FETCH_INSTALL_DATE 0
 #define IO_BUFFER_SIZE 10240 // 10kb
-
-// My CPU shows as a PCI adapter in `sensors` for some reason??
-#define CPU_SENSOR_NAME "k10temp-pci-00c3"
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -32,6 +30,7 @@ static char *read_file(const char *path);
 static void fetch_user_and_host_name();
 static void fetch_memory_info();
 static void fetch_cpu_info();
+static void fetch_installation_date();
 
 //
 // Util functions for parsing.
@@ -45,13 +44,84 @@ static inline int is_numerical(char c)
 	return (c >= '0' && c <= '9');
 }
 
-//
-// TODO: maybe rewrite this to parse from the `free` command, instead of reading /proc/meminfo,
-//       idk, this approach is more extensible.
-// 
+
+static void fetch_installation_date()
+{
+#if FETCH_INSTALL_DATE
+    char *first_pacman_cmd = do_command("head -n1 /var/log/pacman.log");
+    if (!first_pacman_cmd || *first_pacman_cmd != '[') return;
+
+    char *start = first_pacman_cmd+1;
+    char *cursor = start;
+    while (*cursor++ != 'T');
+    cursor--;
+
+    u64 length = (cursor - start);
+    printf(ANSI_COLOR_BLUE "System installed" ANSI_COLOR_RESET ": ");
+    printf("%.*s\n", length, start);
+
+    free(first_pacman_cmd);
+#endif
+}
+
+static void fetch_uptime()
+{
+    char *uptime = do_command("uptime");
+    char *cursor = uptime;
+    char *start  = uptime;
+
+    int colon_index = 0;
+    int index       = 0;
+
+    while (*cursor++ != 'p');
+    while (*cursor == ' ' || *cursor == '\t') cursor++;
+    start = cursor;
+
+    int minutes_only = 0;
+    while (1)
+    {
+        if (*cursor == 'm')
+        {
+            minutes_only = 1;
+            break;
+        }
+        if (*cursor == ',' || index >= 1000) break;
+        if (*cursor == ':') colon_index = index;
+        index++;
+        cursor++;
+    }
+
+    if (minutes_only == 1)
+    {
+        u64 length = (cursor - start) - 1;
+        printf(ANSI_COLOR_BLUE "Uptime" ANSI_COLOR_RESET ": ");
+        printf("%.*s minutes\n", length, start);
+        free(uptime);
+        return;
+    }
+
+    u64 minutes_length = (index - colon_index) - 1;
+
+    char *hour_string    = malloc(colon_index);
+    char *minutes_string = malloc(minutes_length);
+
+    strncpy(hour_string, start, colon_index);
+    hour_string[colon_index] = 0;
+
+    strncpy(minutes_string, start+colon_index+1, minutes_length);
+    minutes_string[minutes_length] = 0;
+
+    u64 length = (cursor - start);
+    printf(ANSI_COLOR_BLUE "Uptime" ANSI_COLOR_RESET ": ");
+    printf("%s hours, %s minutes\n", hour_string, minutes_string);
+
+    free(hour_string);
+    free(minutes_string);
+    free(uptime);
+}
+
 // Print format:
 //   Memory: used / available MiB
-//
 static void fetch_memory_info()
 {
 	char *meminfo = read_file("/proc/meminfo");
@@ -224,56 +294,16 @@ static char *read_file(const char *path)
 
 static void fetch_cpu_info()
 {
-    return;
-	char *sensors = do_command("sensors");
-	char *cpu_temp = NULL;
+    return; // TODO
 
-	char *cursor = sensors;
-	while (*cursor)
-	{
-		char *name_start = cursor;
-		while (*cursor && *cursor++ != '\n');
-		char *name_end = cursor;
+	char *cpu_temp = do_command("/sys/class/hwmon/hwmon1/temp2_input");
+    printf("debug %s\n", cpu_temp);
+    float as_float = atof(cpu_temp);
+    as_float /= 100;
+    printf("debug %f\n", as_float);
 
-		printf("%.*s\n", (int)(name_end - name_start), name_start);
-
-		if (strncmp(name_start, CPU_SENSOR_NAME, (int)(name_end - name_start)) == 0)
-		{
-			while (1)
-			{
-				if (*cursor == '\n') break;
-				cursor++;
-
-				char *info_line_start = cursor, *info_line_end = 0;
-				while (*cursor && *cursor++ != '\n');
-				info_line_end = cursor;
-				
-				if (strncmp(info_line_start, "Adapter", strlen("Adapter")) == 0) continue;
-
-				if (strncmp(info_line_start, "Tdie:", strlen("Tdie:")) == 0)
-				{
-					cursor += strlen("Tdie:");
-					while ((*cursor == '+' || *cursor == '-') && *cursor++ == ' ');
-					char *temp_start = cursor;
-					while (is_numerical(*cursor) || *cursor++ == '.');
-					u64 temp_length = (u64)(cursor - temp_start); 
-					cpu_temp = malloc(temp_length);
-					strncpy(cpu_temp, temp_start, temp_length);
-				}
-			}
-		}
-		else
-		{
-			continue;
-		}
-
-		cursor++;
-	}
-
-	if (!cpu_temp) return;
 	printf(ANSI_COLOR_BLUE "Processor temp " ANSI_COLOR_RESET ": %s°C", cpu_temp);
 	free(cpu_temp);
-	free(sensors);
 }
 
 int main(int arg_count, char **args)
@@ -284,6 +314,9 @@ int main(int arg_count, char **args)
 	fetch_kernel_version();
 	fetch_memory_info();
 	fetch_pacman_package_count();
+    fetch_installation_date();
+    fetch_uptime();
+
 	fetch_cpu_info();
 
 	printf("\n");
