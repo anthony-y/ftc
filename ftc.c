@@ -5,6 +5,8 @@
 typedef unsigned char     u8;
 typedef unsigned long int u64;
 
+#define ASSERT_FALSE() (*(int *)0)
+
 #define IO_BUFFER_SIZE 10240 // 10kb
 
 // For any of these, you can change the "1;" to a "0;" to make it non-bold (these are all bold by default, except ANSI_COLOR_DEFAULT).
@@ -17,9 +19,9 @@ typedef unsigned long int u64;
 
 #define ANSI_COLOR_DEFAULT "\x1b[0m"
 
-#define TITLE_COLOR    ANSI_COLOR_YELLOW
+#define TITLE_COLOR    ANSI_COLOR_MAGENTA
 #define INFO_COLOR     ANSI_COLOR_DEFAULT
-#define USERNAME_COLOR ANSI_COLOR_MAGENTA
+#define USERNAME_COLOR ANSI_COLOR_RED
 #define HOSTNAME_COLOR ANSI_COLOR_DEFAULT
 
 // These are the core functions of the program.
@@ -27,8 +29,8 @@ typedef unsigned long int u64;
 static char *do_command(const char *the_command);
 static char *read_file(const char *path);
 
-// These call do_command and read_file to get the right info.
-// They are "pure", so not state, and ultimately they just invoke printf.
+// These call do_command() and read_file() to get the right info.
+// They are "pure", so no state, and ultimately they just invoke printf().
 static void fetch_installation_date();
 static void fetch_uptime();
 static void fetch_memory_info();
@@ -51,8 +53,8 @@ int main(int arg_count, char **args)
     fetch_memory_info();
     fetch_pacman_package_count();
     fetch_uptime();
-    fetch_cpu_temperature();
-    fetch_installation_date();
+    // fetch_cpu_temperature();
+    // fetch_installation_date();
 
     printf("\n");
 
@@ -178,7 +180,7 @@ static void fetch_memory_info()
             u64 length = (u64)(text_end - text_start);
 
             // Skip the colon and the spaces.
-            if (*cursor != ':') *(void *)0; // bootleg assert()
+            if (*cursor != ':') ASSERT_FALSE();
             cursor++; // :
             while (*++cursor == ' ');
 
@@ -200,11 +202,11 @@ static void fetch_memory_info()
                 free_memory = atol(number_as_text);
 
             // Skip the units.
-            if (*cursor != 'k' && *cursor+1 != 'B') *(void *)0;
+            if (*cursor != 'k' && *cursor+1 != 'B') ASSERT_FALSE();
             cursor += 2; // kB
 
             // Skip the new line character.
-            if (*cursor != '\n') *(void *)0;
+            if (*cursor != '\n') ASSERT_FALSE();
             cursor++;
         }
         cursor++;
