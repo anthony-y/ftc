@@ -7,10 +7,10 @@ ftc can fetch the following stats about your system:
 
 * Kernel name
 * Current memory usage
-* Number of installed packages \*
 * Uptime
-* Date of system installation \*
 * CPU temperature
+* Date of system installation \*
+* Number of installed packages \*
 
 \* only for Arch Linux & derivatives, i.e Manjaro, Artix (requires pacman, basically)
 
