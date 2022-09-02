@@ -51,9 +51,11 @@ int main(int arg_count, char **args)
     fetch_user_and_host_name();
     fetch_kernel_version();
     fetch_memory_info();
-    fetch_pacman_package_count();
     fetch_uptime();
-    // fetch_cpu_temperature();
+    fetch_cpu_temperature();
+
+    /* Enable these only on Arch systems! */
+    // fetch_pacman_package_count();
     // fetch_installation_date();
 
     printf("\n");
